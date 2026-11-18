@@ -51,6 +51,13 @@
   .status.err { color: var(--danger); }
   .hidden { display: none !important; }
   .hint { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  ul.list li.row { display: flex; align-items: center; gap: 10px; }
+  ul.list li.row .txt { flex: 1; min-width: 0; }
+  .handle { touch-action: none; cursor: grab; font-size: 22px; color: var(--muted);
+            padding: 6px 10px; margin: -6px -8px -6px 0; user-select: none; }
+  ul.list li.dragging { opacity: .85; box-shadow: 0 6px 18px rgba(0,0,0,.2); position: relative; z-index: 3; }
+  body.reorder ul.list li { cursor: default; }
+  #orderBtn.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -58,6 +65,7 @@
   <div class="bar">
     <button id="backBtn" class="icon hidden" aria-label="Zurück">←</button>
     <h1 id="title">Meine Rezepte</h1>
+    <button id="orderBtn" class="icon" aria-label="Reihenfolge ändern" title="Reihenfolge ändern">⇅</button>
     <button id="reloadBtn" class="icon" aria-label="Neu laden" title="Neu laden">⟳</button>
     <button id="settingsBtn" class="icon" aria-label="Einstellungen" title="Einstellungen">⚙</button>
   </div>
@@ -143,6 +151,7 @@
   let sha = null;          // Version der Datei auf GitHub
   let currentId = null;    // aktuell geöffnetes Gericht
   let editingId = null;    // null = neues Gericht
+  let reorderMode = false;
 
   // ---------- UTF-8 <-> Base64 ----------
   function toB64(str) {
@@ -228,7 +237,7 @@
     sha = json.content.sha;
     saveCache();
     setStatus('Gespeichert.');
-    setTimeout(() => setStatus(''), 1500);
+    setTimeout(() => { if ($('status').textContent === 'Gespeichert.') setStatus(''); }, 1500);
   }
 
   // Änderung anwenden: frisch laden, Änderung ausführen, speichern (vermeidet Überschreiben)
@@ -265,6 +274,8 @@
     $('searchWrap').classList.toggle('hidden', !isList);
     $('addBtn').classList.toggle('hidden', !isList);
     $('backBtn').classList.toggle('hidden', isList);
+    $('orderBtn').classList.toggle('hidden', !isList);
+    if (!isList && reorderMode) setReorder(false);
     $('title').textContent = { listView: 'Meine Rezepte', detailView: 'Rezept', formView: editingId ? 'Bearbeiten' : 'Neues Gericht',
                                settingsView: 'Einstellungen' }[view];
     window.scrollTo(0, 0);
@@ -274,18 +285,25 @@
 
   function render() {
     const q = norm($('search').value.trim());
-    const items = rezepte
-      .filter(r => !q || norm(r.name).includes(q) || norm(r.zutaten).includes(q))
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' }));
+    const items = reorderMode ? rezepte.slice()
+      : rezepte.filter(r => !q || norm(r.name).includes(q) || norm(r.zutaten).includes(q));
     const ul = $('list');
     ul.replaceChildren();
     for (const r of items) {
-      const li = document.createElement('li');
+      const li = document.createElement('li'); li.className = 'row'; li.dataset.id = r.id;
+      const txt = document.createElement('div'); txt.className = 'txt';
       const n = document.createElement('div'); n.textContent = r.name || '(ohne Namen)';
       const sub = document.createElement('div'); sub.className = 'sub';
       sub.textContent = (r.zutaten || '').split('\n').map(s => s.trim()).filter(Boolean).join(', ');
-      li.append(n, sub);
-      li.addEventListener('click', () => openDetail(r.id));
+      txt.append(n, sub); li.append(txt);
+      if (reorderMode) {
+        const h = document.createElement('span'); h.className = 'handle'; h.textContent = '☰';
+        h.setAttribute('aria-label', 'Ziehen zum Verschieben');
+        h.addEventListener('pointerdown', e => startDrag(e, li));
+        li.append(h);
+      } else {
+        li.addEventListener('click', () => openDetail(r.id));
+      }
       ul.append(li);
     }
     $('empty').classList.toggle('hidden', rezepte.length > 0);
@@ -322,7 +340,72 @@
 
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+  // ---------- Reihenfolge ----------
+  function setReorder(on) {
+    reorderMode = on;
+    document.body.classList.toggle('reorder', on);
+    $('orderBtn').classList.toggle('on', on);
+    $('orderBtn').textContent = on ? 'Fertig' : '⇅';
+    $('searchWrap').classList.toggle('hidden', on);
+    $('addBtn').classList.toggle('hidden', on);
+    if (on) { $('search').value = ''; setStatus('Gerichte am ☰ ziehen, um sie zu verschieben.'); }
+    else setStatus('');
+    render();
+  }
+
+  function startDrag(e, li) {
+    e.preventDefault();
+    const ul = $('list');
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const before = [...ul.children].map(x => x.dataset.id).join();
+    li.classList.add('dragging');
+    let lastY = e.clientY, offset = 0, scrollTimer = null;
+
+    function placeAt(y) {
+      const others = [...ul.children].filter(x => x !== li);
+      let target = null;
+      for (const o of others) {
+        const r = o.getBoundingClientRect();
+        if (y < r.top + r.height / 2) { target = o; break; }
+      }
+      const oldTop = li.getBoundingClientRect().top;
+      if (target) { if (li.nextSibling !== target) ul.insertBefore(li, target); }
+      else if (ul.lastChild !== li) ul.append(li);
+      const newTop = li.getBoundingClientRect().top;
+      offset += oldTop - newTop;  // Element bleibt optisch unter dem Finger
+    }
+    function move(ev) {
+      offset += ev.clientY - lastY; lastY = ev.clientY;
+      li.style.transform = '';
+      placeAt(ev.clientY);
+      const r = li.getBoundingClientRect();
+      offset = ev.clientY - (r.top + r.height / 2);
+      li.style.transform = `translateY(${offset}px)`;
+      clearInterval(scrollTimer);
+      if (ev.clientY < 80) scrollTimer = setInterval(() => window.scrollBy(0, -8), 16);
+      else if (ev.clientY > innerHeight - 60) scrollTimer = setInterval(() => window.scrollBy(0, 8), 16);
+    }
+    async function end() {
+      clearInterval(scrollTimer);
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      li.classList.remove('dragging'); li.style.transform = '';
+      const order = [...ul.children].map(x => x.dataset.id);
+      if (order.join() === before) return;
+      const byId = new Map(rezepte.map(r => [r.id, r]));
+      const ok = await change(() => { rezepte = order.map(id => byId.get(id)).filter(Boolean); }, 'Reihenfolge geändert');
+      render();
+      if (ok) setStatus('Reihenfolge gespeichert. Weiter ziehen oder auf „Fertig“ tippen.');
+    }
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
   // ---------- Ereignisse ----------
+  $('orderBtn').addEventListener('click', () => setReorder(!reorderMode));
   $('search').addEventListener('input', render);
   $('addBtn').addEventListener('click', () => openForm(null));
   $('backBtn').addEventListener('click', () => { render(); show('listView'); });
