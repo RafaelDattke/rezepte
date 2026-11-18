@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f6b4f">
+<title>Meine Rezepte</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f7f5f0; --card: #fff; --text: #222; --muted: #6b6b6b;
+    --accent: #2f6b4f; --accent-text: #fff; --border: #e2ded5; --danger: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #181a19; --card: #232625; --text: #ececec; --muted: #a0a0a0;
+            --accent: #5fae86; --accent-text: #0e1a14; --border: #333836; --danger: #ef8a83; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); font-size: 17px; line-height: 1.45; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg);
+           padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+  .bar { display: flex; align-items: center; gap: 8px; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0; flex: 1; }
+  main { max-width: 720px; margin: 0 auto; padding: 12px 16px 96px; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+           background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  button.icon { padding: 8px 11px; }
+  input, textarea { font: inherit; width: 100%; padding: 11px 12px; border-radius: 10px;
+                    border: 1px solid var(--border); background: var(--card); color: var(--text); }
+  textarea { min-height: 120px; resize: vertical; }
+  label { display: block; font-weight: 600; margin: 14px 0 6px; }
+  .search { margin-top: 10px; max-width: 720px; margin-left: auto; margin-right: auto; }
+  ul.list { list-style: none; padding: 0; margin: 0; }
+  ul.list li { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+               margin-bottom: 8px; padding: 14px 16px; cursor: pointer; }
+  ul.list li .sub { color: var(--muted); font-size: 14px; margin-top: 2px;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card h2 { margin: 0 0 8px; font-size: 22px; }
+  .card h3 { margin: 16px 0 6px; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .pre { white-space: pre-wrap; }
+  .actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .fab { position: fixed; right: 18px; bottom: 18px; border-radius: 999px; padding: 14px 20px;
+         box-shadow: 0 4px 14px rgba(0,0,0,.18); font-weight: 600; }
+  .muted { color: var(--muted); }
+  .status { font-size: 14px; color: var(--muted); margin: 6px 0 10px; min-height: 1em; }
+  .status.err { color: var(--danger); }
+  .hidden { display: none !important; }
+  .hint { font-size: 14px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <button id="backBtn" class="icon hidden" aria-label="Zurück">←</button>
+    <h1 id="title">Meine Rezepte</h1>
+    <button id="reloadBtn" class="icon" aria-label="Neu laden" title="Neu laden">⟳</button>
+    <button id="settingsBtn" class="icon" aria-label="Einstellungen" title="Einstellungen">⚙</button>
+  </div>
+  <div class="search" id="searchWrap">
+    <input id="search" type="search" placeholder="Suchen nach Name oder Zutat …" autocomplete="off">
+  </div>
+</header>
+
+<main>
+  <div id="status" class="status"></div>
+
+  <!-- Liste -->
+  <section id="listView">
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="muted hidden">Noch keine Gerichte. Tippe auf „+ Neues Gericht“.</p>
+  </section>
+
+  <!-- Detail -->
+  <section id="detailView" class="hidden">
+    <div class="card">
+      <h2 id="dName"></h2>
+      <h3>Zutaten</h3>
+      <div id="dZutaten" class="pre"></div>
+      <h3>Zubereitung</h3>
+      <div id="dZubereitung" class="pre"></div>
+      <div class="actions">
+        <button id="editBtn" class="primary">Bearbeiten</button>
+        <button id="deleteBtn" class="danger">Löschen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Formular -->
+  <section id="formView" class="hidden">
+    <div class="card">
+      <label for="fName">Name</label>
+      <input id="fName" type="text" placeholder="z. B. Shakshuka">
+      <label for="fZutaten">Zutaten</label>
+      <textarea id="fZutaten" placeholder="Eine Zutat pro Zeile"></textarea>
+      <label for="fZubereitung">Zubereitung</label>
+      <textarea id="fZubereitung" placeholder="Kurz beschreiben"></textarea>
+      <div class="actions">
+        <button id="saveBtn" class="primary">Speichern</button>
+        <button id="cancelBtn">Abbrechen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Einstellungen -->
+  <section id="settingsView" class="hidden">
+    <div class="card">
+      <label for="sOwner">GitHub-Benutzername</label>
+      <input id="sOwner" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label for="sRepo">Privates Rezepte-Projekt</label>
+      <input id="sRepo" type="text" value="rezepte_daten" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <label for="sToken">Schlüssel (Token)</label>
+      <input id="sToken" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…">
+      <p class="hint">Der Schlüssel wird nur in diesem Browser auf diesem Gerät gespeichert.</p>
+      <div class="actions">
+        <button id="sSaveBtn" class="primary">Speichern und laden</button>
+        <button id="sCancelBtn">Abbrechen</button>
+        <button id="sForgetBtn" class="danger">Schlüssel entfernen</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<button id="addBtn" class="primary fab">+ Neues Gericht</button>
+
+<script>
+(() => {
+  const FILE = 'rezepte.json';
+  const LS = { owner: 'rz_owner', repo: 'rz_repo', token: 'rz_token', cache: 'rz_cache' };
+  const $ = id => document.getElementById(id);
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+
+  let rezepte = [];
+  let sha = null;          // Version der Datei auf GitHub
+  let currentId = null;    // aktuell geöffnetes Gericht
+  let editingId = null;    // null = neues Gericht
+
+  // ---------- UTF-8 <-> Base64 ----------
+  function toB64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+  function fromB64(b64) {
+    const bin = atob(b64.replace(/\s/g, ''));
+    const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }
+
+  // ---------- GitHub ----------
+  function cfg() {
+    return { owner: (store.get(LS.owner) || '').trim(), repo: (store.get(LS.repo) || 'rezepte_daten').trim(),
+             token: (store.get(LS.token) || '').trim() };
+  }
+  function apiUrl() {
+    const c = cfg();
+    return `https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}/contents/${FILE}`;
+  }
+  function headers() {
+    return { 'Accept': 'application/vnd.github+json', 'Authorization': `Bearer ${cfg().token}`,
+             'X-GitHub-Api-Version': '2022-11-28' };
+  }
+  function errText(status) {
+    if (status === 401) return 'Schlüssel ungültig oder abgelaufen. Bitte in den Einstellungen neu eingeben.';
+    if (status === 403) return 'Keine Berechtigung. Hat der Schlüssel Lese- und Schreibrechte für das Projekt?';
+    if (status === 404) return 'Projekt nicht gefunden. Benutzername und Projektname prüfen.';
+    return `Fehler beim Zugriff auf GitHub (Code ${status}).`;
+  }
+
+  async function load() {
+    const c = cfg();
+    if (!c.owner || !c.token) { showCache(); openSettings(); return; }
+    setStatus('Lade …');
+    try {
+      const res = await fetch(apiUrl() + `?t=${Date.now()}`, { headers: headers(), cache: 'no-store' });
+      if (res.status === 404) {
+        // Projekt existiert, Datei noch nicht? Prüfen, ob das Repo erreichbar ist
+        const r2 = await fetch(`https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}`,
+                               { headers: headers(), cache: 'no-store' });
+        if (r2.ok) { rezepte = []; sha = null; saveCache(); render(); setStatus(''); return; }
+        throw { status: r2.status };
+      }
+      if (!res.ok) throw { status: res.status };
+      const json = await res.json();
+      sha = json.sha;
+      const data = JSON.parse(fromB64(json.content) || '{}');
+      rezepte = Array.isArray(data.rezepte) ? data.rezepte : [];
+      saveCache();
+      render();
+      setStatus('');
+    } catch (e) {
+      showCache();
+      setStatus(e && e.status ? errText(e.status) : 'Keine Verbindung. Zeige zuletzt geladenen Stand.', true);
+    }
+  }
+
+  async function persist(message) {
+    const body = { message, content: toB64(JSON.stringify({ rezepte }, null, 2) + '\n') };
+    if (sha) body.sha = sha;
+    setStatus('Speichere …');
+    const res = await fetch(apiUrl(), { method: 'PUT', headers: { ...headers(), 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(body) });
+    if (res.status === 409 || res.status === 422) {
+      throw new Error('conflict');
+    }
+    if (!res.ok) throw new Error(errText(res.status));
+    const json = await res.json();
+    sha = json.content.sha;
+    saveCache();
+    setStatus('Gespeichert.');
+    setTimeout(() => setStatus(''), 1500);
+  }
+
+  // Änderung anwenden: frisch laden, Änderung ausführen, speichern (vermeidet Überschreiben)
+  async function change(mutator, message) {
+    const backup = rezepte.slice();
+    try {
+      mutator();
+      await persist(message);
+      return true;
+    } catch (e) {
+      rezepte = backup;
+      if (e.message === 'conflict') {
+        await load();
+        setStatus('Das Rezeptbuch wurde inzwischen auf einem anderen Gerät geändert. Neuer Stand ist geladen – bitte nochmal speichern.', true);
+      } else {
+        setStatus(e.message && !e.message.startsWith('Failed') ? e.message : 'Speichern fehlgeschlagen – keine Verbindung?', true);
+      }
+      return false;
+    }
+  }
+
+  function saveCache() { store.set(LS.cache, JSON.stringify(rezepte)); }
+  function showCache() {
+    try { rezepte = JSON.parse(store.get(LS.cache) || '[]'); } catch { rezepte = []; }
+    render();
+  }
+
+  // ---------- Ansicht ----------
+  function setStatus(t, err = false) { const s = $('status'); s.textContent = t; s.classList.toggle('err', !!err); }
+
+  function show(view) {
+    for (const v of ['listView', 'detailView', 'formView', 'settingsView']) $(v).classList.toggle('hidden', v !== view);
+    const isList = view === 'listView';
+    $('searchWrap').classList.toggle('hidden', !isList);
+    $('addBtn').classList.toggle('hidden', !isList);
+    $('backBtn').classList.toggle('hidden', isList);
+    $('title').textContent = { listView: 'Meine Rezepte', detailView: 'Rezept', formView: editingId ? 'Bearbeiten' : 'Neues Gericht',
+                               settingsView: 'Einstellungen' }[view];
+    window.scrollTo(0, 0);
+  }
+
+  const norm = s => (s || '').toLocaleLowerCase('de').normalize('NFC');
+
+  function render() {
+    const q = norm($('search').value.trim());
+    const items = rezepte
+      .filter(r => !q || norm(r.name).includes(q) || norm(r.zutaten).includes(q))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de', { sensitivity: 'base' }));
+    const ul = $('list');
+    ul.replaceChildren();
+    for (const r of items) {
+      const li = document.createElement('li');
+      const n = document.createElement('div'); n.textContent = r.name || '(ohne Namen)';
+      const sub = document.createElement('div'); sub.className = 'sub';
+      sub.textContent = (r.zutaten || '').split('\n').map(s => s.trim()).filter(Boolean).join(', ');
+      li.append(n, sub);
+      li.addEventListener('click', () => openDetail(r.id));
+      ul.append(li);
+    }
+    $('empty').classList.toggle('hidden', rezepte.length > 0);
+    if (rezepte.length > 0 && items.length === 0) {
+      const li = document.createElement('li'); li.className = 'muted'; li.style.cursor = 'default';
+      li.textContent = 'Nichts gefunden.'; ul.append(li);
+    }
+  }
+
+  function openDetail(id) {
+    const r = rezepte.find(x => x.id === id); if (!r) return;
+    currentId = id;
+    $('dName').textContent = r.name;
+    $('dZutaten').textContent = r.zutaten || '–';
+    $('dZubereitung').textContent = r.zubereitung || '–';
+    show('detailView');
+  }
+
+  function openForm(id) {
+    editingId = id || null;
+    const r = id ? rezepte.find(x => x.id === id) : null;
+    $('fName').value = r ? r.name : '';
+    $('fZutaten').value = r ? r.zutaten : '';
+    $('fZubereitung').value = r ? r.zubereitung : '';
+    show('formView');
+    $('fName').focus();
+  }
+
+  function openSettings() {
+    const c = cfg();
+    $('sOwner').value = c.owner; $('sRepo').value = c.repo; $('sToken').value = c.token;
+    show('settingsView');
+  }
+
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  // ---------- Ereignisse ----------
+  $('search').addEventListener('input', render);
+  $('addBtn').addEventListener('click', () => openForm(null));
+  $('backBtn').addEventListener('click', () => { render(); show('listView'); });
+  $('reloadBtn').addEventListener('click', () => { show('listView'); load(); });
+  $('settingsBtn').addEventListener('click', openSettings);
+  $('cancelBtn').addEventListener('click', () => editingId ? openDetail(editingId) : show('listView'));
+  $('editBtn').addEventListener('click', () => openForm(currentId));
+
+  $('saveBtn').addEventListener('click', async () => {
+    const name = $('fName').value.trim();
+    if (!name) { setStatus('Bitte einen Namen eingeben.', true); return; }
+    const entry = { name, zutaten: $('fZutaten').value.trim(), zubereitung: $('fZubereitung').value.trim() };
+    $('saveBtn').disabled = true;
+    let ok, id = editingId;
+    if (editingId) {
+      ok = await change(() => { rezepte = rezepte.map(r => r.id === editingId ? { ...r, ...entry } : r); }, `Bearbeitet: ${name}`);
+    } else {
+      id = newId();
+      ok = await change(() => { rezepte = [...rezepte, { id, ...entry }]; }, `Neu: ${name}`);
+    }
+    $('saveBtn').disabled = false;
+    if (ok) { render(); openDetail(id); }
+  });
+
+  $('deleteBtn').addEventListener('click', async () => {
+    const r = rezepte.find(x => x.id === currentId); if (!r) return;
+    if (!confirm(`„${r.name}“ wirklich löschen?`)) return;
+    const ok = await change(() => { rezepte = rezepte.filter(x => x.id !== currentId); }, `Gelöscht: ${r.name}`);
+    if (ok) { render(); show('listView'); }
+  });
+
+  $('sSaveBtn').addEventListener('click', () => {
+    store.set(LS.owner, $('sOwner').value.trim());
+    store.set(LS.repo, $('sRepo').value.trim() || 'rezepte_daten');
+    store.set(LS.token, $('sToken').value.trim());
+    show('listView'); load();
+  });
+  $('sCancelBtn').addEventListener('click', () => show('listView'));
+  $('sForgetBtn').addEventListener('click', () => {
+    store.del(LS.token); store.del(LS.cache); $('sToken').value = ''; rezepte = []; render();
+    setStatus('Schlüssel und gespeicherte Rezepte von diesem Gerät entfernt.');
+  });
+
+  show('listView');
+  load();
+})();
+</script>
+</body>
+</html>
