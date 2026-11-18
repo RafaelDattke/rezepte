@@ -188,6 +188,16 @@
         const r2 = await fetch(`https://api.github.com/repos/${encodeURIComponent(c.owner)}/${encodeURIComponent(c.repo)}`,
                                { headers: headers(), cache: 'no-store' });
         if (r2.ok) { rezepte = []; sha = null; saveCache(); render(); setStatus(''); return; }
+        if (r2.status === 404) {
+          // Genauer prüfen: Ist der Schlüssel überhaupt gültig?
+          const u = await fetch('https://api.github.com/user', { headers: headers(), cache: 'no-store' });
+          if (u.ok) {
+            const me = await u.json();
+            throw { msg: `Der Schlüssel ist gültig (Konto: ${me.login}), hat aber keinen Zugriff auf das Projekt „${c.repo}“. ` +
+                         'Beim Schlüssel „Only select repositories“ → dieses Projekt auswählen und „Contents: Read and write“ setzen.' };
+          }
+          throw { status: u.status };
+        }
         throw { status: r2.status };
       }
       if (!res.ok) throw { status: res.status };
@@ -200,7 +210,7 @@
       setStatus('');
     } catch (e) {
       showCache();
-      setStatus(e && e.status ? errText(e.status) : 'Keine Verbindung. Zeige zuletzt geladenen Stand.', true);
+      setStatus(e && e.msg ? e.msg : e && e.status ? errText(e.status) : 'Keine Verbindung. Zeige zuletzt geladenen Stand.', true);
     }
   }
 
