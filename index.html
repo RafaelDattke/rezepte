@@ -173,7 +173,7 @@
   function errText(status) {
     if (status === 401) return 'Schlüssel ungültig oder abgelaufen. Bitte in den Einstellungen neu eingeben.';
     if (status === 403) return 'Keine Berechtigung. Hat der Schlüssel Lese- und Schreibrechte für das Projekt?';
-    if (status === 404) return 'Projekt nicht gefunden. Benutzername und Projektname prüfen.';
+    if (status === 404) return 'Projekt nicht gefunden – oder der Schlüssel hat keinen Zugriff darauf. Benutzername, Projektname und Schlüssel-Berechtigungen prüfen.';
     return `Fehler beim Zugriff auf GitHub (Code ${status}).`;
   }
 
